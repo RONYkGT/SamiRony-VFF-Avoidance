@@ -3,25 +3,59 @@
 using namespace std::chrono_literals;
 
 AvoidanceNode::AvoidanceNode()
-: Node("obstacle_avoidance")
+: Node("vff_avoidance")
 {
-    distance_threshold = 1.0;
-    k_obstacle = -1.0;
+    // Declare parameters with default values
+    this->declare_parameter<double>("distance_threshold", 1.0);
+    this->declare_parameter<double>("k_obstacle", -1.0);
+
+    // Retrieve the parameter values
+    this->get_parameter("distance_threshold", distance_threshold);
+    this->get_parameter("k_obstacle", k_obstacle);
+
     RCLCPP_INFO(this->get_logger(), "robot initialized");
     subscription_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
         "/scan", 10, std::bind(&AvoidanceNode::scan_callback, this, std::placeholders::_1));
     publisher_ = this->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
     marker_publisher_ = this->create_publisher<visualization_msgs::msg::Marker>("visualization_marker", 10);
 
+    // Add callback function whenever parameters get changed on rqt
+    params_callback_handle_ = this->add_on_set_parameters_callback(
+        std::bind(&AvoidanceNode::parameters_callback, this, std::placeholders::_1));
+
+}
+
+rcl_interfaces::msg::SetParametersResult AvoidanceNode::parameters_callback(const std::vector<rclcpp::Parameter> &parameters)
+{
+    RCLCPP_INFO(this->get_logger(), "updating paramters");
+    rcl_interfaces::msg::SetParametersResult result;
+    result.successful = true;
+    result.reason = "succecss";
+
+    for (const auto &param : parameters)
+    {
+        if (param.get_name() == "distance_threshold")
+        {
+            distance_threshold = param.as_double();
+            RCLCPP_INFO(this->get_logger(), "distance_threshold updated to: %f", distance_threshold);
+        }
+        else if (param.get_name() == "k_obstacle")
+        {
+            k_obstacle = param.as_double();
+            RCLCPP_INFO(this->get_logger(), "k_obstacle updated to: %f", k_obstacle);
+        }
+    }
+    return result;
 }
 
 
 void AvoidanceNode::scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
 {
+  
     double min_distance = distance_threshold;
     double target_vector[2] = {1,0};
-    double obstacle_vector[2];
-    size_t index;
+    double obstacle_vector[2] = {0,0};
+    size_t index = 0;
     for (size_t i = 0; i < msg->ranges.size(); ++i) {
       if(msg->ranges[i] < min_distance)
       {
@@ -30,11 +64,16 @@ void AvoidanceNode::scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr m
       }
     }
     double angle = msg->angle_min + index * msg->angle_increment;
-    RCLCPP_INFO(this->get_logger(), "min_dist: %f, index: %d", min_distance, index);
-    double x = k_obstacle * (1/msg->ranges[index]) * cos(angle);
-    double y = k_obstacle * (1/msg->ranges[index]) * sin(angle);
-    obstacle_vector[0] = x;
-    obstacle_vector[1] = y;
+    RCLCPP_INFO(this->get_logger(), "min_dist: %f, index: %d, angle: %f", min_distance, index, angle);
+    RCLCPP_INFO(this->get_logger(), "k_obstacle is: %f", k_obstacle);
+
+    if(min_distance < distance_threshold){
+      double x = k_obstacle * (1/msg->ranges[index]) * cos(angle);
+      double y = k_obstacle * (1/msg->ranges[index]) * sin(angle);
+      obstacle_vector[0] = x;
+      obstacle_vector[1] = y;
+    }
+    
 
     double result_vector[2];
     result_vector[0] = target_vector[0] + obstacle_vector[0];

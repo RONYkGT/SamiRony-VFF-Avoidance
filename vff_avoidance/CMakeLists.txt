@@ -11,6 +11,7 @@ find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(rcl_interfaces REQUIRED)
 
 add_executable(avoidance_node src/vff_avoidance/AvoidanceNode.cpp)
 
@@ -19,6 +20,7 @@ ament_target_dependencies(avoidance_node
   sensor_msgs
   visualization_msgs
   geometry_msgs
+  rcl_interfaces
 )
 
 install(TARGETS avoidance_node
