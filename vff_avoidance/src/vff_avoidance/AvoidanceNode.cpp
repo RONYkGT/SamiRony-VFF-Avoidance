@@ -7,8 +7,8 @@ AvoidanceNode::AvoidanceNode()
 {
     // Declare parameters with default values
     this->declare_parameter<double>("distance_threshold", 0.5);
-    this->declare_parameter<double>("k_obstacle", -0.005);
-    this->declare_parameter<double>("speed", 0.75);  // Default speed value
+    this->declare_parameter<double>("k_obstacle", -0.0025);
+    this->declare_parameter<double>("speed", 0.4);  // Default speed value
     this->declare_parameter<double>("alignment_threshold", 1.0);  // Angular threshold for alignment
 
     // Retrieve the parameter values
@@ -102,8 +102,8 @@ void AvoidanceNode::scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr m
     for (size_t i = 0; i < msg->ranges.size(); ++i) {
         if (msg->ranges[i] < distance_threshold) {
             double angle = msg->angle_min + i * msg->angle_increment;
-            double x = k_obstacle * (1 / msg->ranges[i]) * cos(angle);
-            double y = k_obstacle * (1 / msg->ranges[i]) * sin(angle);
+            double x = k_obstacle * (1 / pow(msg->ranges[i],2)) * cos(angle);
+            double y = k_obstacle * (1 / pow(msg->ranges[i],2)) * sin(angle);
             obstacle_vector[0] += x;
             obstacle_vector[1] += y;
             if (msg->ranges[i] < min_distance)
@@ -143,7 +143,7 @@ void AvoidanceNode::scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr m
 
     // Initialize the twist message
     auto twist_msg = geometry_msgs::msg::Twist();
-    twist_msg.angular.z = speed * result_angle;
+    twist_msg.angular.z = result_angle;
 
     if (min_distance < distance_threshold/2 && !(std::abs(result_angle) < alignment_threshold)) {
         // Robot is too close to the obstacle and too far from facing the right direction, stop linear motion
