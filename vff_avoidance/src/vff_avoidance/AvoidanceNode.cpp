@@ -6,31 +6,34 @@ AvoidanceNode::AvoidanceNode()
 : Node("vff_avoidance")
 {
     // Declare parameters with default values
-    this->declare_parameter<double>("distance_threshold", 1.0);
-    this->declare_parameter<double>("k_obstacle", -1.0);
+    this->declare_parameter<double>("distance_threshold", 0.5);
+    this->declare_parameter<double>("k_obstacle", -0.005);
+    this->declare_parameter<double>("speed", 0.75);  // Default speed value
+    this->declare_parameter<double>("alignment_threshold", 1.0);  // Angular threshold for alignment
 
     // Retrieve the parameter values
     this->get_parameter("distance_threshold", distance_threshold);
     this->get_parameter("k_obstacle", k_obstacle);
+    this->get_parameter("speed", speed);  // Retrieve speed parameter
+    this->get_parameter("alignment_threshold", alignment_threshold);  // Retrieve alignment threshold
 
     RCLCPP_INFO(this->get_logger(), "robot initialized");
-    subscription_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
-        "/scan", 10, std::bind(&AvoidanceNode::scan_callback, this, std::placeholders::_1));
+    subscription_ = this->create_subscription<sensor_msgs::msg::LaserScan>("/scan", 10, std::bind(&AvoidanceNode::scan_callback, this, std::placeholders::_1));
     publisher_ = this->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
+    odometry_subscription_ = this->create_subscription<nav_msgs::msg::Odometry>("/odom", 10, std::bind(&AvoidanceNode::odometry_callback, this, std::placeholders::_1));
     marker_publisher_ = this->create_publisher<visualization_msgs::msg::Marker>("visualization_marker", 10);
 
     // Add callback function whenever parameters get changed on rqt
     params_callback_handle_ = this->add_on_set_parameters_callback(
         std::bind(&AvoidanceNode::parameters_callback, this, std::placeholders::_1));
-
 }
 
 rcl_interfaces::msg::SetParametersResult AvoidanceNode::parameters_callback(const std::vector<rclcpp::Parameter> &parameters)
 {
-    RCLCPP_INFO(this->get_logger(), "updating paramters");
+    RCLCPP_INFO(this->get_logger(), "updating parameters");
     rcl_interfaces::msg::SetParametersResult result;
     result.successful = true;
-    result.reason = "succecss";
+    result.reason = "success";
 
     for (const auto &param : parameters)
     {
@@ -44,51 +47,124 @@ rcl_interfaces::msg::SetParametersResult AvoidanceNode::parameters_callback(cons
             k_obstacle = param.as_double();
             RCLCPP_INFO(this->get_logger(), "k_obstacle updated to: %f", k_obstacle);
         }
+        else if (param.get_name() == "speed")
+        {
+            speed = param.as_double();
+            RCLCPP_INFO(this->get_logger(), "speed updated to: %f", speed);
+        }
+        else if (param.get_name() == "alignment_threshold")
+        {
+            alignment_threshold = param.as_double();
+            RCLCPP_INFO(this->get_logger(), "alignment_threshold updated to: %f", alignment_threshold);
+        }
     }
     return result;
 }
 
+void AvoidanceNode::odometry_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
+{
+    // We are getting the current orientation of the bot in "yaw"
+    // Convert the quaternion to yaw (rotation around the Z axis)
+    tf2::Quaternion q(
+        msg->pose.pose.orientation.x,
+        msg->pose.pose.orientation.y,
+        msg->pose.pose.orientation.z,
+        msg->pose.pose.orientation.w);
+
+    tf2::Matrix3x3 m(q);
+    double roll, pitch, yaw;
+    m.getRPY(roll, pitch, yaw);
+
+    current_yaw = yaw;
+    if (!initial_orientation_received) {
+        initial_yaw = yaw;
+        initial_orientation_received = true;
+        RCLCPP_INFO(this->get_logger(), "Initial yaw set to: %f", initial_yaw);
+    }
+}
 
 void AvoidanceNode::scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
 {
-  
+    if (!initial_orientation_received) {
+        RCLCPP_WARN(this->get_logger(), "Initial orientation not yet received.");
+        return;
+    }
+
+    // Calculate the adjusted yaw to rotate the target vector accordingly
+    double adjusted_yaw = initial_yaw - current_yaw;
+    //this makes sure the target vector is facing where it was facing initially when the bot rotates
+    double target_vector[2] = {cos(adjusted_yaw), sin(adjusted_yaw)}; 
+
+    // Add all the vectors below the threshold inside the obstacle vector
     double min_distance = distance_threshold;
-    double target_vector[2] = {1,0};
-    double obstacle_vector[2] = {0,0};
+    double obstacle_vector[2] = {0, 0};
     size_t index = 0;
     for (size_t i = 0; i < msg->ranges.size(); ++i) {
-      if(msg->ranges[i] < min_distance)
-      {
-        min_distance = msg->ranges[i];
-        index = i;
-      }
+        if (msg->ranges[i] < distance_threshold) {
+            double angle = msg->angle_min + i * msg->angle_increment;
+            double x = k_obstacle * (1 / msg->ranges[i]) * cos(angle);
+            double y = k_obstacle * (1 / msg->ranges[i]) * sin(angle);
+            obstacle_vector[0] += x;
+            obstacle_vector[1] += y;
+            if (msg->ranges[i] < min_distance)
+                min_distance = msg->ranges[i]; //keep track of closest obstacle
+        }
     }
-    double angle = msg->angle_min + index * msg->angle_increment;
-    RCLCPP_INFO(this->get_logger(), "min_dist: %f, index: %d, angle: %f", min_distance, index, angle);
-    RCLCPP_INFO(this->get_logger(), "k_obstacle is: %f", k_obstacle);
 
-    if(min_distance < distance_threshold){
-      double x = k_obstacle * (1/msg->ranges[index]) * cos(angle);
-      double y = k_obstacle * (1/msg->ranges[index]) * sin(angle);
-      obstacle_vector[0] = x;
-      obstacle_vector[1] = y;
-    }
-    
 
+    // Combine target and obstacle vectors
     double result_vector[2];
     result_vector[0] = target_vector[0] + obstacle_vector[0];
     result_vector[1] = target_vector[1] + obstacle_vector[1];
 
-    publish_marker(target_vector, "target_vector", 0, 1.0, 0.0, 0.0); // Red for target
-    publish_marker(obstacle_vector, "obstacle_vector", 1, 0.0, 1.0, 0.0); // Green for obstacle
-    publish_marker(result_vector, "result_vector", 2, 0.0, 0.0, 1.0); // Blue for result
+
+    // Check if obstacle and target vectors are nearly opposite
+    double dot_product = target_vector[0] * obstacle_vector[0] + target_vector[1] * obstacle_vector[1];
+    if (dot_product < 0 && fabs(dot_product) >= 0.99) { 
+        // Add a small bias to the result vector
+        result_vector[0] += 0.3;
+        result_vector[1] += 0.3;
+    }
+
+    // Normalise the result vector so it doesnt go higher than 1.0 in length (too fast) because of adding too many obstacle vectors
+    double magnitude = sqrt(pow(result_vector[0], 2) + pow(result_vector[1], 2));
+    if (magnitude > 1.0) {
+        result_vector[0] /= magnitude;
+        result_vector[1] /= magnitude;
+    }
 
     
+
+    // Calculate the linear and angular velocities
+    // Get the speed based on the length of result vector (pythagoras)
+    double result_magnitude = std::sqrt(result_vector[0] * result_vector[0] + result_vector[1] * result_vector[1]);
+    // Get the angular speed based on the angle of result vector
+    double result_angle = std::atan2(result_vector[1], result_vector[0]);
+
+    // Initialize the twist message
+    auto twist_msg = geometry_msgs::msg::Twist();
+    twist_msg.angular.z = speed * result_angle;
+
+    if (min_distance < distance_threshold/2 && !(std::abs(result_angle) < alignment_threshold)) {
+        // Robot is too close to the obstacle and too far from facing the right direction, stop linear motion
+        twist_msg.linear.x = 0.0;
+    } else {
+        // Regular motion: Move forward and rotate
+        twist_msg.linear.x = speed * result_magnitude;
+    }
+    
+    publisher_->publish(twist_msg);
+    RCLCPP_INFO(this->get_logger(), "linear vel: %f, ang vel: %f", twist_msg.linear.x, twist_msg.angular.z);
+
+    // Publish markers for visualization
+    publish_marker(target_vector, "target_vector", 0, 0.0, 0.0, 1.0); // Blue for target
+    publish_marker(obstacle_vector, "obstacle_vector", 1, 1.0, 0.0, 0.0); // Red for obstacle
+    publish_marker(result_vector, "result_vector", 2, 0.0, 1.0, 0.0); // Green for result
 }
 
 void AvoidanceNode::publish_marker(double vector[2], const std::string& ns, int id, float r, float g, float b) {
     auto marker = visualization_msgs::msg::Marker();
-    marker.header.frame_id = "base_link"; // Set this to your robot's frame
+    marker.header.frame_id = "base_link";
     marker.header.stamp = this->now();
     marker.ns = ns;
     marker.id = id;
@@ -115,7 +191,7 @@ void AvoidanceNode::publish_marker(double vector[2], const std::string& ns, int 
     marker.points.push_back(end);
 
     marker_publisher_->publish(marker);
-  }
+}
 
 int main(int argc, char *argv[])
 {

@@ -12,6 +12,9 @@ find_package(sensor_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(rcl_interfaces REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
 
 add_executable(avoidance_node src/vff_avoidance/AvoidanceNode.cpp)
 
@@ -19,8 +22,11 @@ ament_target_dependencies(avoidance_node
   rclcpp
   sensor_msgs
   visualization_msgs
+  nav_msgs
   geometry_msgs
   rcl_interfaces
+  tf2
+  tf2_ros
 )
 
 install(TARGETS avoidance_node
