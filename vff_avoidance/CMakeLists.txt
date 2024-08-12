@@ -16,7 +16,7 @@ find_package(nav_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 
-add_executable(avoidance_node src/vff_avoidance/avoidance_vff_main.cpp src/vff_avoidance/AvoidanceNode.cpp)
+add_executable(avoidance_node src/avoidance_vff_main.cpp src/vff_avoidance/AvoidanceNode.cpp)
 
 ament_target_dependencies(avoidance_node
   rclcpp

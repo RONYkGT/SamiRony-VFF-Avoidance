@@ -1,5 +1,5 @@
 #include <rclcpp/rclcpp.hpp>
-#include "../../include/vff_avoidance/AvoidanceNode.hpp"
+#include "../include/vff_avoidance/AvoidanceNode.hpp"
 
 int main(int argc, char *argv[])
 {

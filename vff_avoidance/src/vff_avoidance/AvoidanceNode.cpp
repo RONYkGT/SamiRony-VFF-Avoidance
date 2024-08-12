@@ -6,11 +6,11 @@ AvoidanceNode::AvoidanceNode()
 : Node("vff_avoidance")
 {
     // Declare parameters with default values
-    this->declare_parameter<double>("distance_threshold", 0.5);
-    this->declare_parameter<double>("k_obstacle", -0.0025);
-    this->declare_parameter<double>("speed", 0.5);  // Default speed value
-    this->declare_parameter<double>("alignment_threshold", 1.0);  // Angular threshold for alignment
-    this->declare_parameter<double>("frequency", 20.0);  
+    this->declare_parameter<double>("distance_threshold", 0.5); // Scan distance range of obstacles
+    this->declare_parameter<double>("k_obstacle", -0.0025); // Repulsion coefficiant
+    this->declare_parameter<double>("speed", 0.5);  // Max speed
+    this->declare_parameter<double>("alignment_threshold", 1.0);  // Angular threshold of forward momentum
+    this->declare_parameter<double>("frequency", 20.0);  // Timer frequency
 
 
     // Retrieve the parameters (values from the YAML file)
@@ -26,13 +26,11 @@ AvoidanceNode::AvoidanceNode()
     odometry_subscription_ = this->create_subscription<nav_msgs::msg::Odometry>("/odom", 10, std::bind(&AvoidanceNode::odometry_callback, this, std::placeholders::_1));
     marker_array_publisher_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("visualization_marker_array", 10);
     // Add callback function whenever parameters get changed on rqt
-    params_callback_handle_ = this->add_on_set_parameters_callback(
-        std::bind(&AvoidanceNode::parameters_callback, this, std::placeholders::_1));
+    params_callback_handle_ = this->add_on_set_parameters_callback(std::bind(&AvoidanceNode::parameters_callback, this, std::placeholders::_1));
 
     // Timer setup for 20Hz execution
     int period_in_milliseconds = 1000 / frequency;
-    timer = this->create_wall_timer(
-        std::chrono::milliseconds(period_in_milliseconds), std::bind(&AvoidanceNode::timer_callback, this));
+    timer = this->create_wall_timer(std::chrono::milliseconds(period_in_milliseconds), std::bind(&AvoidanceNode::timer_callback, this));
 }
 
 
@@ -155,6 +153,8 @@ void AvoidanceNode::update_timer(double new_frequency)
 
 void AvoidanceNode::vff_algorithm()
 {
+
+    //vector_name[2] = {double x, double y} (format)
     auto msg = laser_scan_;
      // Calculate the adjusted yaw to rotate the target vector accordingly
     double adjusted_yaw = initial_yaw - current_yaw;
