@@ -25,7 +25,7 @@ This project implements a behavior-based algorithm for autonomous obstacle avoid
     Use a single-threaded executor to run the node, ensuring it executes at 20Hz.
 
 ## Example:
-![Screencast from 08-12-2024 08_21_02 PM (1)](https://github.com/user-attachments/assets/a1357602-358a-4afd-8515-a18d144e01b5)
+![Screencastfrom08-12-202408_21_02PM1-ezgif com-resize](https://github.com/user-attachments/assets/40d7044d-dbbf-4611-a1bb-116ed892b8ee)
 RViz2 visualization showing speed clamping in action.
 
 ## Usage:
