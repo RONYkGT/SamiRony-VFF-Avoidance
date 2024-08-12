@@ -26,6 +26,7 @@ This project implements a behavior-based algorithm for autonomous obstacle avoid
 
 ## Example:
 ![Screencastfrom08-12-202408_21_02PM1-ezgif com-resize](https://github.com/user-attachments/assets/40d7044d-dbbf-4611-a1bb-116ed892b8ee)
+
 RViz2 visualization showing speed clamping in action.
 
 ## Usage:
