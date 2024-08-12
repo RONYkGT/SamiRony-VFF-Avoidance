@@ -19,7 +19,8 @@ public:
     AvoidanceNode();
 
 private:
-    void scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg);
+    void scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg);    
+    void timer_callback();
     void odometry_callback(const nav_msgs::msg::Odometry::SharedPtr msg);
     void publish_marker(double vector[2], const std::string& ns, int id, float r, float g, float b);
     rcl_interfaces::msg::SetParametersResult parameters_callback(const std::vector<rclcpp::Parameter> &parameters);
@@ -28,7 +29,9 @@ private:
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr subscription_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr publisher_;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odometry_subscription_;  // Subscription for Odometry
-    
+    rclcpp::TimerBase::SharedPtr timer;
+    sensor_msgs::msg::LaserScan::SharedPtr laser_scan_; // Class member variable
+    rclcpp::Time last_scan_time_; // New member for tracking the last scan time
     double distance_threshold;
     double k_obstacle;
     double speed;
@@ -36,6 +39,8 @@ private:
     double initial_yaw = 0.0;  // To store the initial yaw
     double current_yaw = 0.0;
     double alignment_threshold = 0.0;
+    double frequency;
+    
     OnSetParametersCallbackHandle::SharedPtr params_callback_handle_;
 
 };

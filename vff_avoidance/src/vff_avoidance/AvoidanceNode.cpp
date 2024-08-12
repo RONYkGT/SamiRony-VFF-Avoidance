@@ -8,14 +8,17 @@ AvoidanceNode::AvoidanceNode()
     // Declare parameters with default values
     this->declare_parameter<double>("distance_threshold", 0.5);
     this->declare_parameter<double>("k_obstacle", -0.0025);
-    this->declare_parameter<double>("speed", 0.4);  // Default speed value
+    this->declare_parameter<double>("speed", 0.5);  // Default speed value
     this->declare_parameter<double>("alignment_threshold", 1.0);  // Angular threshold for alignment
+    this->declare_parameter<double>("frequency", 20.0);  
 
-    // Retrieve the parameter values
+
+    // Retrieve the parameters (values from the YAML file)
     this->get_parameter("distance_threshold", distance_threshold);
     this->get_parameter("k_obstacle", k_obstacle);
-    this->get_parameter("speed", speed);  // Retrieve speed parameter
-    this->get_parameter("alignment_threshold", alignment_threshold);  // Retrieve alignment threshold
+    this->get_parameter("speed", speed);  
+    this->get_parameter("alignment_threshold", alignment_threshold);  
+    this->get_parameter("frequency", frequency); 
 
     RCLCPP_INFO(this->get_logger(), "robot initialized");
     subscription_ = this->create_subscription<sensor_msgs::msg::LaserScan>("/scan", 10, std::bind(&AvoidanceNode::scan_callback, this, std::placeholders::_1));
@@ -26,7 +29,13 @@ AvoidanceNode::AvoidanceNode()
     // Add callback function whenever parameters get changed on rqt
     params_callback_handle_ = this->add_on_set_parameters_callback(
         std::bind(&AvoidanceNode::parameters_callback, this, std::placeholders::_1));
+
+    // Timer setup for 20Hz execution
+    int period_in_milliseconds = 1000 / frequency;
+    timer = this->create_wall_timer(
+        std::chrono::milliseconds(period_in_milliseconds), std::bind(&AvoidanceNode::timer_callback, this));
 }
+
 
 rcl_interfaces::msg::SetParametersResult AvoidanceNode::parameters_callback(const std::vector<rclcpp::Parameter> &parameters)
 {
@@ -61,6 +70,8 @@ rcl_interfaces::msg::SetParametersResult AvoidanceNode::parameters_callback(cons
     return result;
 }
 
+
+
 void AvoidanceNode::odometry_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
 {
     // We are getting the current orientation of the bot in "yaw"
@@ -85,8 +96,12 @@ void AvoidanceNode::odometry_callback(const nav_msgs::msg::Odometry::SharedPtr m
 
 void AvoidanceNode::scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
 {
-    if (!initial_orientation_received) {
-        RCLCPP_WARN(this->get_logger(), "Initial orientation not yet received.");
+    // Store the laser scan data in the class member variable
+    laser_scan_ = msg;
+    last_scan_time_ = this->now(); // Update the last scan time
+    // Check if the initial orientation has not been received or if the laser scan data is not yet available.
+    if (!initial_orientation_received || !laser_scan_) {
+        RCLCPP_WARN(this->get_logger(), "Orientation not yet received.");
         return;
     }
 
@@ -161,7 +176,37 @@ void AvoidanceNode::scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr m
     publish_marker(obstacle_vector, "obstacle_vector", 1, 1.0, 0.0, 0.0); // Red for obstacle
     publish_marker(result_vector, "result_vector", 2, 0.0, 1.0, 0.0); // Green for result
 }
+void AvoidanceNode::timer_callback()
+{
+    if (!laser_scan_) {
+        RCLCPP_WARN(this->get_logger(), "Laser scan message not available.");
+        return;
+    }
+    // Check if the laser scan message is older than 2 seconds
+    auto now = this->now();
+    auto scan_age = now - last_scan_time_;
+    if (scan_age.seconds() > 2) {
+        RCLCPP_WARN(this->get_logger(), "Laser scan data is older than 2 seconds.");
+        return;
+    }
+    // Retrieve the current frequency parameter
+    double current_frequency = this->get_parameter("frequency").as_double();
 
+    // Check if the frequency parameter has changed
+    if (current_frequency != frequency) {
+        frequency = current_frequency;
+        int period_in_milliseconds = 1000 / frequency;
+            
+        // Create a new timer with the updated frequency
+        timer = this->create_wall_timer(
+            std::chrono::milliseconds(period_in_milliseconds), 
+            std::bind(&AvoidanceNode::timer_callback, this)
+        );
+
+    }
+    
+   
+}
 void AvoidanceNode::publish_marker(double vector[2], const std::string& ns, int id, float r, float g, float b) {
     auto marker = visualization_msgs::msg::Marker();
     marker.header.frame_id = "base_link";
@@ -193,11 +238,3 @@ void AvoidanceNode::publish_marker(double vector[2], const std::string& ns, int 
     marker_publisher_->publish(marker);
 }
 
-int main(int argc, char *argv[])
-{
-    rclcpp::init(argc, argv);
-    auto node = std::make_shared<AvoidanceNode>();
-    rclcpp::spin(node);
-    rclcpp::shutdown();
-    return 0;
-}
