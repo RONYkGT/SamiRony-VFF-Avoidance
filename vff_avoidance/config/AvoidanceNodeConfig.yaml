@@ -1,7 +1,7 @@
 avoidance_node:
   ros__parameters:
-    distance_threshold: 0.6          # Custom value for the distance threshold
-    k_obstacle: -0.003               # Custom value for the obstacle avoidance coefficient
-    speed: 0.5                       # Custom speed value
-    alignment_threshold: 0.8         # Custom angular threshold for alignment
+    distance_threshold: 0.5          # Custom value for the distance threshold
+    k_obstacle: -0.0025              # Custom value for the obstacle avoidance coefficient
+    speed: 0.4                       # Custom speed value
+    alignment_threshold: 1.0         # Custom angular threshold for alignment
     frequency: 20.0                  # Custom frequency value          
